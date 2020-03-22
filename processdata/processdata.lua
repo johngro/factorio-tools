@@ -318,7 +318,7 @@ function Process.process_data(data, locales, verbose)
 	-- Normalize entities
 	local entity_attrs = {
 		["accumulator"] = {"energy_source"},
-		["assembling-machine"] = {"allowed_effects", "crafting_categories", "crafting_speed", "energy_usage", "ingredient_count", "module_specification"},
+		["assembling-machine"] = {"allowed_effects", "crafting_categories", "crafting_speed", "energy_source", "energy_usage", "ingredient_count", "module_specification"},
 		["boiler"] = {"energy_consumption", "energy_source"},
 		["furnace"] = {"allowed_effects", "crafting_categories", "crafting_speed", "energy_source", "energy_usage", "module_specification"},
 		["generator"] = {"effectivity", "fluid_usage_per_tick"},
