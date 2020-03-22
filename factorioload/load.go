@@ -19,6 +19,7 @@ import (
 	"github.com/KirkMcDonald/golua/lua"
 	"github.com/gobuffalo/packr"
 	"github.com/mitchellh/go-homedir"
+	"github.com/nfnt/resize"
 )
 
 var gameDir = flag.String("gamedir", "", "Factorio installation directory")
@@ -279,6 +280,7 @@ func LoadData(processDataBox, loaderLibBox packr.Box, verbose bool) (FactorioDat
 		L.Pop(1)
 		L.GetField(-1, "path")
 		path := L.CheckString(-1)
+
 		L.Pop(1)
 		var iconFile io.ReadCloser
 		if source == "file" {
@@ -326,13 +328,20 @@ func LoadData(processDataBox, loaderLibBox packr.Box, verbose bool) (FactorioDat
 		row := i / width
 		col := i % width
 		dest := image.Point{col * pxWidth, row * pxHeight}
+
 		r := image.Rectangle{dest, dest.Add(image.Point{pxWidth, pxHeight})}
 		sourcePoint := image.ZP
-		// XXX: A hack: If the icon is 64 pixels high, assume it is a mipmap
-		// and grab from the 32x32 version.
-		if icon.Bounds().Max.Y == 64 {
+		// XXX: A hack: If the icon is 64 pixels high, and also not square,
+		// assume it is a mipmap and grab from the 32x32 version.
+		if (icon.Bounds().Max.Y == 64) &&
+			(icon.Bounds().Max.Y != icon.Bounds().Max.X) {
 			sourcePoint = image.Point{64, 0}
+		} else
+		// If the icon file is larger than 32x32, scale it back down.
+		if (icon.Bounds().Max.X != 32) || (icon.Bounds().Max.Y != 32) {
+			icon = resize.Resize(32, 32, icon, resize.Lanczos3)
 		}
+
 		draw.Draw(im, r, icon, sourcePoint, draw.Src)
 		// pop current icon
 		L.Pop(1)
