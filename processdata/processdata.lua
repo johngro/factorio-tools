@@ -40,7 +40,13 @@ local function normalize_recipe(r)
 	end
 	for i, result in ipairs(r.results) do
 		if result.amount == nil then
-			r.results[i] = {name = result[1], amount = result[2]}
+			-- If this recipe is missing an amount, but has a min/max amount,
+			-- then just output it as it is.  Some of Bob's recipies (like
+			-- cobalt-oxide-from-copper) output ranges instead of fixed amounts.
+			-- This will be handled on the javascript side of things.
+			if result.amount_min == nil and result.amount_max == nil then
+				r.results[i] = {name = result[1], amount = result[2]}
+			end
 		end
 	end
 	if r.energy_required == nil then
