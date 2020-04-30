@@ -144,6 +144,28 @@ function Process.process_data(data, locales, verbose)
 
 	-- Limit it to English for now.
 	local locale = locales["en"]
+
+	-- Attempt to expand string templates which exist in the chosen locale
+	local function expand_string_template(orig, section, item)
+		section = string.lower(section) .. "-name"
+		if locale[section] then
+			-- If this is missing, we will return nil and no substitution will
+			-- take place
+			return locale[section][item]
+		end
+		return nil
+	end
+
+	for section_ndx, section in pairs(locale) do
+		for string_name, s in pairs(section) do
+			local new_str, count = string.gsub(s, "(__([A-Z]+)__(.-)__)", expand_string_template)
+			if count then
+				print("REPLACE ", locale[section_ndx][string_name], new_str)
+				locale[section_ndx][string_name] = new_str
+			end
+		end
+	end
+
 	local item_types = {"ammo", "armor", "blueprint", "blueprint-book", "capsule", "deconstruction-item", "fluid", "gun", "item", "item-with-entity-data", "mining-tool", "module", "rail-planner", "repair-tool", "tool"}
 	local no_module_icon = data["utility-sprites"]["default"]["slot_icon_module"]["filename"]
 	local clock_icon = data["utility-sprites"]["default"]["clock"]["filename"]
