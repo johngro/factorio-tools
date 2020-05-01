@@ -104,9 +104,46 @@ local function icon_compare(a, b)
 	return stem_a < stem_b
 end
 
--- XXX: We don't actually need this yet.
 local function localize_name(locale, name)
-	return "<dummy name>"
+	local function lookup(str)
+		local section, item = str:match("(.-)%.(.*)")
+		return locale[section][item]
+	end
+
+	return lookup(name[1]):gsub("__(%d+)__", function(ndx)
+		return lookup(name[2][tonumber(ndx)])
+	end)
+end
+
+local function expand_locale_templates(locale)
+	-- make multiple passes over the locale tables attempting to expand all of
+	-- the templates that we encounter.  Stop when we are no longer changing
+	-- strings, or when we have cycled an excessive number of times (there might
+	-- be a cycle in the graph somewhere)
+	local total_cycles = 0
+	while true do
+		local total_count = 0
+		for section_ndx, section in pairs(locale) do
+			for string_name, s in pairs(section) do
+				local new_str = s:gsub("__(.-)__(.-)__", function(section, name)
+					section = section:lower() .. "-name"
+					if (locale[section]) then
+						return locale[section][name]
+					end
+					return nil
+				end)
+
+				if locale[section_ndx][string_name] ~= new_str then
+					locale[section_ndx][string_name] = new_str
+					total_count = total_count + 1
+				end
+			end
+		end
+		total_cycles = total_cycles + 1
+		if (total_count == 0) or (total_cycles > 10) then
+			break;
+		end
+	end
 end
 
 function Process.process_data(data, locales, verbose)
@@ -116,14 +153,48 @@ function Process.process_data(data, locales, verbose)
 		end
 	end
 	local function assign_localized_name(locale, raw_object, new_object, fallback)
-		local locale_sections = {"recipe-name", "item-name", "fluid-name", "equipment-name", "entity-name"}
+		-- If this is:
+		-- 1) A recipe with a single result field, and
+		-- 2) The recipe does not have a native localised name, and
+		-- 3) The result item can be found in our raw item data
+		--
+		-- then use that item's raw data to generate our name instead of using
+		-- the recipe's raw data.  This helps with some mod overrides.	For
+		-- example, Bob's inserter mods overrides the recipe for
+		-- "long-handed-inserter" to take different ingredients but still
+		-- produce a "long-handed-inserter".  The "long-handed-inserter" item,
+		-- however, ends up _placing_ a "red-inserter", and the "red-inserter"'s
+		-- name will localize (in English) to "Fast Inserter", which is really
+		-- what we want to show.
+		--
+		if raw_object.localised_name == nil and raw_object.type == "recipe" and raw_object.result ~= nil then 
+			local item = data["item"][raw_object.result]
+			if item ~= nil then
+				raw_object = item
+			end
+		end
+
 		if raw_object.localised_name then
 			new_object.localized_name = {en = localize_name(locale, raw_object.localised_name)}
 		else
+			local locale_sections = {"recipe-name", "item-name", "fluid-name", "equipment-name", "entity-name"}
 			local localized_name = nil
+
 			for _, obj in ipairs({raw_object, fallback}) do
+				-- By default, use the object's |name| field as we attempt to find a localization
+				-- for it in the tables.
+				--
+				-- If the object is an item, and it has a place_result, use that as the name to look
+				-- up.	Bob's inserter mods, for example, overrides "long-handed-inserter" to place
+				-- a "red-inserter" instead, and the "red-inserter"s English localization is "Fast
+				-- Inserter".
+				local name = obj.name
+				if obj.type == "item" and obj.place_result ~= nil then
+					name = obj.place_result
+				end
+
 				for _, section in ipairs(locale_sections) do
-					localized_name = locale[section][obj.name]
+					localized_name = locale[section][name]
 					if localized_name ~= nil then
 						goto found
 					end
@@ -133,10 +204,6 @@ function Process.process_data(data, locales, verbose)
 			if localized_name == nil then
 				msg("no localized name for", raw_object.type, "named", raw_object.name)
 			else
-				localized_name = localized_name:gsub("__(%S*)__(%S*)__", function(section, name)
-					section = section:lower() .. "-name"
-					return locale[section][name]
-				end)
 				new_object.localized_name = {en = localized_name}
 			end
 		end
@@ -144,27 +211,7 @@ function Process.process_data(data, locales, verbose)
 
 	-- Limit it to English for now.
 	local locale = locales["en"]
-
-	-- Attempt to expand string templates which exist in the chosen locale
-	local function expand_string_template(orig, section, item)
-		section = string.lower(section) .. "-name"
-		if locale[section] then
-			-- If this is missing, we will return nil and no substitution will
-			-- take place
-			return locale[section][item]
-		end
-		return nil
-	end
-
-	for section_ndx, section in pairs(locale) do
-		for string_name, s in pairs(section) do
-			local new_str, count = string.gsub(s, "(__([A-Z]+)__(.-)__)", expand_string_template)
-			if count then
-				print("REPLACE ", locale[section_ndx][string_name], new_str)
-				locale[section_ndx][string_name] = new_str
-			end
-		end
-	end
+	expand_locale_templates(locale)
 
 	local item_types = {"ammo", "armor", "blueprint", "blueprint-book", "capsule", "deconstruction-item", "fluid", "gun", "item", "item-with-entity-data", "mining-tool", "module", "rail-planner", "repair-tool", "tool"}
 	local no_module_icon = data["utility-sprites"]["default"]["slot_icon_module"]["filename"]
